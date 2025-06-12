@@ -1,0 +1,12 @@
+# =============================================================================
+# molecule/default/requirements.yml - Dependencies for testing
+# =============================================================================
+
+---
+collections:
+  - name: prometheus.prometheus
+    version: ">=0.26.0"
+  - name: community.general
+    version: ">=5.0.0"
+  - name: ansible.posix
+    version: ">=1.4.0"

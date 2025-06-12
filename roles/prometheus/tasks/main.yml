@@ -1,0 +1,49 @@
+# =============================================================================
+# tasks/main.yml - Main task orchestration
+# =============================================================================
+
+---
+- name: Include OS-specific variables
+  include_vars: "{{ ansible_os_family }}.yml"
+  when: ansible_os_family in ['RedHat', 'Debian']
+  tags:
+    - prometheus
+    - configuration
+
+- name: Include preflight checks
+  include_tasks: preflight.yml
+  tags:
+    - prometheus
+    - preflight
+
+- name: Include installation tasks
+  include_tasks: install.yml
+  tags:
+    - prometheus
+    - installation
+
+- name: Include configuration tasks
+  include_tasks: configure.yml
+  tags:
+    - prometheus
+    - configuration
+
+- name: Include service management tasks
+  include_tasks: service.yml
+  tags:
+    - prometheus
+    - service
+
+- name: Verify Prometheus is responding
+  uri:
+    url: "http://{{ prometheus_web_listen_address.split(':')[0] }}:{{ prometheus_web_listen_address.split(':')[1] }}{{ prometheus_web_route_prefix }}api/v1/status/config"
+    method: GET
+    timeout: 30
+  register: prometheus_api_response
+  until: prometheus_api_response.status == 200
+  retries: 5
+  delay: 10
+  when: prometheus_systemd_service_state == 'started'
+  tags:
+    - prometheus
+    - verification

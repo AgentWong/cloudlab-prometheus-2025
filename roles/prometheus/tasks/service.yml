@@ -1,0 +1,79 @@
+# =============================================================================
+# tasks/service.yml - Service management
+# =============================================================================
+
+---
+- name: Generate prometheus systemd service file
+  template:
+    src: prometheus.service.j2
+    dest: "{{ prometheus_daemon_dir }}/prometheus.service"
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  notify:
+    - reload systemd
+    - restart prometheus
+  tags:
+    - prometheus
+    - service
+
+- name: Configure systemd service limits
+  template:
+    src: prometheus-limits.conf.j2
+    dest: /etc/systemd/system/prometheus.service.d/limits.conf
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  notify:
+    - reload systemd
+    - restart prometheus
+  tags:
+    - prometheus
+    - service
+
+- name: Flush handlers
+  meta: flush_handlers
+  tags:
+    - prometheus
+    - service
+
+- name: Enable and start prometheus service
+  systemd:
+    name: prometheus
+    enabled: "{{ prometheus_systemd_service_enabled }}"
+    state: "{{ prometheus_systemd_service_state }}"
+    daemon_reload: true
+  become: true
+  tags:
+    - prometheus
+    - service
+
+- name: Configure firewall for prometheus
+  firewalld:
+    port: "{{ prometheus_web_listen_address.split(':')[1] }}/tcp"
+    permanent: true
+    state: enabled
+    zone: "{{ prometheus_firewall_zone }}"
+    immediate: true
+  become: true
+  when: 
+    - prometheus_firewall_enabled
+    - ansible_os_family == 'RedHat'
+  tags:
+    - prometheus
+    - service
+
+- name: Configure UFW for prometheus
+  ufw:
+    rule: allow
+    port: "{{ prometheus_web_listen_address.split(':')[1] }}"
+    proto: tcp
+  become: true
+  when: 
+    - prometheus_firewall_enabled
+    - ansible_os_family == 'Debian'
+  tags:
+    - prometheus
+    - service

@@ -1,0 +1,125 @@
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          pip install ansible ansible-lint yamllint
+          ansible-galaxy collection install -r requirements.yml
+          
+      - name: Lint Ansible files
+        run: |
+          yamllint .
+          ansible-lint .
+          
+      - name: Security scan with KICS
+        uses: checkmarx/kics-github-action@v1.7.0
+        with:
+          path: '.'
+          fail_on: high
+          output_formats: 'json,sarif'
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro:
+          - ubuntu2204
+          - centos8
+          - debian11
+        scenario:
+          - default
+          - security
+          - upgrade
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          pip install molecule molecule-docker docker
+          ansible-galaxy collection install -r requirements.yml
+          
+      - name: Test with molecule
+        run: molecule test -s ${{ matrix.scenario }}
+        env:
+          MOLECULE_DISTRO: ${{ matrix.distro }}
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to test environment
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ansible-playbook -i inventory/test site.yml
+          
+      - name: Run integration tests
+        run: |
+          # Wait for Prometheus to be ready
+          timeout 300 bash -c 'while ! curl -s http://test-prometheus:9090/api/v1/status/config; do sleep 5; done'
+          
+          # Test API endpoints
+          curl -f http://test-prometheus:9090/api/v1/targets
+          curl -f http://test-prometheus:9090/api/v1/rules
+          curl -f http://test-prometheus:9090/metrics
+          
+          # Test query functionality
+          curl -f "http://test-prometheus:9090/api/v1/query?query=up"
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [integration]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Generate changelog
+        id: changelog
+        uses: conventional-changelog/conventional-changelog-action@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.changelog.outputs.tag }}
+          release_name: ${{ steps.changelog.outputs.tag }}
+          body: ${{ steps.changelog.outputs.clean_changelog }}
+          
+      - name: Publish to Ansible Galaxy
+        uses: artis3n/ansible_galaxy_collection@v2
+        with:
+          api_key: ${{ secrets.GALAXY_API_KEY }}
+          collection_dir: '.'

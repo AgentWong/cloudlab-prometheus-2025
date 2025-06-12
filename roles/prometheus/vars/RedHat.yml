@@ -1,0 +1,9 @@
+# vars/RedHat.yml
+---
+prometheus_system_packages:
+  - curl
+  - tar
+  - gzip
+  - policycoreutils-python-utils  # For SELinux management
+
+prometheus_firewall_service: firewalld

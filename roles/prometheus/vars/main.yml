@@ -1,0 +1,27 @@
+# =============================================================================
+# vars/main.yml - Non-overridable variables
+# =============================================================================
+
+---
+prometheus_binary_local_dir: /tmp/prometheus-{{ prometheus_version }}
+prometheus_archive: "prometheus-{{ prometheus_version }}.linux-{{ prometheus_platform_architecture }}.tar.gz"
+prometheus_archive_path: "/tmp/{{ prometheus_archive }}"
+
+prometheus_daemon_dir: /etc/systemd/system
+prometheus_binary_url: "{{ prometheus_download_url }}"
+
+# Required system packages
+prometheus_system_packages:
+  - curl
+  - tar
+  - gzip
+
+# Binary files to install
+prometheus_binaries:
+  - prometheus
+  - promtool
+
+# Console files to copy
+prometheus_console_files:
+  - consoles
+  - console_libraries

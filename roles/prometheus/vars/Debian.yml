@@ -1,0 +1,9 @@
+# vars/Debian.yml  
+---
+prometheus_system_packages:
+  - curl
+  - tar
+  - gzip
+  - ca-certificates
+
+prometheus_firewall_service: ufw

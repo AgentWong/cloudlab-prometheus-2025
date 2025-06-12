@@ -1,0 +1,38 @@
+# =============================================================================
+# handlers/main.yml - Event handlers
+# =============================================================================
+
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+  become: true
+  listen: "reload systemd"
+
+- name: restart prometheus
+  systemd:
+    name: prometheus
+    state: restarted
+  become: true
+  listen: "restart prometheus"
+
+- name: reload prometheus
+  systemd:
+    name: prometheus
+    state: reloaded
+  become: true
+  listen: "reload prometheus"
+
+- name: stop prometheus
+  systemd:
+    name: prometheus
+    state: stopped
+  become: true
+  listen: "stop prometheus"
+
+- name: start prometheus
+  systemd:
+    name: prometheus
+    state: started
+  become: true
+  listen: "start prometheus"

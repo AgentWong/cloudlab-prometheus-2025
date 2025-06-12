@@ -1,0 +1,47 @@
+# =============================================================================
+# meta/main.yml - Role metadata
+# =============================================================================
+
+---
+galaxy_info:
+  role_name: prometheus
+  author: Herman Wong
+  description: Production-ready Prometheus monitoring server installation and configuration
+  company: Enterprise Monitoring Stack
+  license: MIT
+  
+  min_ansible_version: "2.9"
+  
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: Debian
+      versions:
+        - buster
+        - bullseye
+        - bookworm
+
+  galaxy_tags:
+    - monitoring
+    - prometheus
+    - metrics
+    - observability
+    - tsdb
+    - alerting
+    - devops
+    - sre
+
+dependencies:
+  - role: ansible-hardening
+    when: prometheus_security_hardening | default(false)
+
+collections:
+  - prometheus.prometheus
+  - community.general
+  - ansible.posix

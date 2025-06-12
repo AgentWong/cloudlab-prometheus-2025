@@ -1,0 +1,122 @@
+# =============================================================================
+# molecule/default/molecule.yml - Default testing scenario
+# =============================================================================
+
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: prometheus-ubuntu2204
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
+    pre_build_image: true
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    command: "/lib/systemd/systemd"
+    tmpfs:
+      - /run
+      - /tmp
+    capabilities:
+      - SYS_ADMIN
+    groups:
+      - prometheus_servers
+    published_ports:
+      - "9090:9090"
+
+  - name: prometheus-centos8
+    image: geerlingguy/docker-centos8-ansible:latest
+    pre_build_image: true
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    command: "/usr/lib/systemd/systemd"
+    tmpfs:
+      - /run
+      - /tmp
+    capabilities:
+      - SYS_ADMIN
+    groups:
+      - prometheus_servers
+    published_ports:
+      - "9091:9090"
+
+  - name: prometheus-debian11
+    image: geerlingguy/docker-debian11-ansible:latest
+    pre_build_image: true
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    command: "/lib/systemd/systemd"
+    tmpfs:
+      - /run
+      - /tmp
+    capabilities:
+      - SYS_ADMIN
+    groups:
+      - prometheus_servers
+    published_ports:
+      - "9092:9090"
+
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      prometheus_servers:
+        prometheus_version: "2.53.4"
+        prometheus_web_listen_address: "0.0.0.0:9090"
+        prometheus_storage_retention: "7d"
+        prometheus_storage_retention_size: "1GB"
+        prometheus_firewall_enabled: false  # Disable for testing
+        
+        # Basic scrape configs for testing
+        prometheus_scrape_configs:
+          - job_name: 'prometheus'
+            static_configs:
+              - targets: ['localhost:9090']
+            scrape_interval: 5s
+            
+          - job_name: 'node-test'
+            static_configs:
+              - targets: ['localhost:9100']
+            scrape_interval: 15s
+            scrape_timeout: 10s
+
+        # Test alert rules
+        prometheus_alert_rules:
+          - name: test_alerts
+            rules:
+              - alert: TestInstanceDown
+                expr: up == 0
+                for: 1m
+                labels:
+                  severity: critical
+                  environment: test
+                annotations:
+                  summary: "Test instance {{ $labels.instance }} is down"
+                  description: "Instance has been down for more than 1 minute"
+
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+      callback_whitelist: profile_tasks, timer, yaml
+      stdout_callback: yaml
+      ansible_python_interpreter: /usr/bin/python3
+    ssh_connection:
+      pipelining: false
+
+verifier:
+  name: ansible
+
+lint: |
+  set -e
+  yamllint .
+  ansible-lint
