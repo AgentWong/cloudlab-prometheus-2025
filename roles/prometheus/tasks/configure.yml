@@ -56,7 +56,7 @@
     group: "{{ prometheus_system_group }}"
     mode: '0644'
   become: true
-  with_fileglob:
+  loop:
     - "{{ prometheus_alert_rules_files }}"
   when: prometheus_alert_rules_files | length > 0
   notify:

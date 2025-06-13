@@ -10,14 +10,15 @@
     - prometheus
     - configuration
 
-- name: Include preflight checks
-  include_tasks: preflight.yml
-  tags:
-    - prometheus
-    - preflight
+- name: Check if prometheus binary exists
+  ansible.builtin.stat:
+    path: "{{ prometheus_binary_install_dir }}/prometheus"
+  register: prometheus_binary_file
+  become: true
 
 - name: Include installation tasks
   include_tasks: install.yml
+  when: not prometheus_binary_file.stat.exists
   tags:
     - prometheus
     - installation

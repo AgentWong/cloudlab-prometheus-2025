@@ -3,7 +3,7 @@
 # =============================================================================
 
 ---
-prometheus_binary_local_dir: /tmp/prometheus-{{ prometheus_version }}
+prometheus_binary_local_dir: /tmp/prometheus-{{ prometheus_version }}.linux-amd64
 prometheus_archive: "prometheus-{{ prometheus_version }}.linux-{{ prometheus_platform_architecture }}.tar.gz"
 prometheus_archive_path: "/tmp/{{ prometheus_archive }}"
 

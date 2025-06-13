@@ -18,6 +18,15 @@
     - prometheus
     - service
 
+- name: Create systemd service directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/prometheus.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+
 - name: Configure systemd service limits
   template:
     src: prometheus-limits.conf.j2
