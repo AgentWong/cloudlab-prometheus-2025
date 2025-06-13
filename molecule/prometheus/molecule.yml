@@ -1,8 +1,7 @@
-# =============================================================================
-# molecule/default/molecule.yml - Default testing scenario
-# =============================================================================
-
 ---
+scenario:
+  name: prometheus
+
 dependency:
   name: galaxy
   options:
@@ -30,8 +29,8 @@ platforms:
     published_ports:
       - "9090:9090"
 
-  - name: prometheus-centos8
-    image: geerlingguy/docker-centos8-ansible:latest
+  - name: prometheus-rockylinux8
+    image: geerlingguy/docker-rockylinux8-ansible:latest
     pre_build_image: true
     privileged: true
     volumes:
@@ -68,51 +67,14 @@ platforms:
 
 provisioner:
   name: ansible
-  inventory:
-    group_vars:
-      prometheus_servers:
-        prometheus_version: "2.53.4"
-        prometheus_web_listen_address: "0.0.0.0:9090"
-        prometheus_storage_retention: "7d"
-        prometheus_storage_retention_size: "1GB"
-        prometheus_firewall_enabled: false  # Disable for testing
-        
-        # Basic scrape configs for testing
-        prometheus_scrape_configs:
-          - job_name: 'prometheus'
-            static_configs:
-              - targets: ['localhost:9090']
-            scrape_interval: 5s
-            
-          - job_name: 'node-test'
-            static_configs:
-              - targets: ['localhost:9100']
-            scrape_interval: 15s
-            scrape_timeout: 10s
-
-        # Test alert rules
-        prometheus_alert_rules:
-          - name: test_alerts
-            rules:
-              - alert: TestInstanceDown
-                expr: up == 0
-                for: 1m
-                labels:
-                  severity: critical
-                  environment: test
-                annotations:
-                  summary: "Test instance {{ $labels.instance }} is down"
-                  description: "Instance has been down for more than 1 minute"
-
   config_options:
     defaults:
+      roles_path: ../../roles  # Point to the roles directory
       interpreter_python: auto_silent
-      callback_whitelist: profile_tasks, timer, yaml
-      stdout_callback: yaml
-      ansible_python_interpreter: /usr/bin/python3
-    ssh_connection:
-      pipelining: false
-
+      callback_whitelist: profile_tasks, timer
+      result_format: yaml
+  env:
+    ANSIBLE_ROLES_PATH: ../../roles  # Additional environment variable
 verifier:
   name: ansible
 

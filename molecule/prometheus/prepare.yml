@@ -8,17 +8,6 @@
   become: true
   gather_facts: false
   tasks:
-    - name: Install Python for Ansible
-      raw: |
-        if [ -f /usr/bin/apt-get ]; then
-          apt-get update && apt-get install -y python3 python3-pip curl
-        elif [ -f /usr/bin/yum ]; then
-          yum makecache && yum install -y python3 python3-pip curl
-        elif [ -f /usr/bin/dnf ]; then
-          dnf makecache && dnf install -y python3 python3-pip curl
-        fi
-      changed_when: false
-
     - name: Gather facts
       setup:
 

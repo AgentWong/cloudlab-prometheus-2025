@@ -1,0 +1,3 @@
+ansible-compat
+molecule
+molecule-plugins[docker]

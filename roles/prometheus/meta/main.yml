@@ -37,10 +37,6 @@ galaxy_info:
     - devops
     - sre
 
-dependencies:
-  - role: ansible-hardening
-    when: prometheus_security_hardening | default(false)
-
 collections:
   - prometheus.prometheus
   - community.general
