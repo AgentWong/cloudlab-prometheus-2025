@@ -184,3 +184,6 @@ tests/fixtures/resources/.extensions/
 # docs output
 _readthedocs/
 .ansible
+
+# Ignore specific external roles
+roles/geerlingguy*

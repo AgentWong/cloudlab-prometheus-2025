@@ -1,0 +1,164 @@
+---
+# =============================================================================
+# Monitoring Server Configuration
+# =============================================================================
+- name: Configure monitoring server
+  hosts: monitoring_server
+  become: true
+  vars:
+    # Prometheus configuration
+    prometheus_scrape_configs:
+      - job_name: "prometheus"
+        static_configs:
+          - targets:
+              - "localhost:9090"
+      - job_name: "node"
+        static_configs:
+          - targets:
+              - "monitoring-server:9100"
+              - "postgres-server:9100"
+      - job_name: "postgres"
+        static_configs:
+          - targets:
+              - "postgres-server:9187"
+    
+    prometheus_rule_files:
+      - "alert_rules.yml"
+    
+    prometheus_alert_rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{% raw %}Instance {{ $labels.instance }} is down{% endraw %}"
+          description: "{% raw %}{{ $labels.instance }} has been down for more than 2 minutes{% endraw %}"
+      
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "{% raw %}PostgreSQL on {{ $labels.instance }} is not responding{% endraw %}"
+      
+      - alert: HighCPUUsage
+        expr: (100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "{% raw %}CPU usage is above 80% on {{ $labels.instance }}{% endraw %}"
+
+    # AlertManager configuration
+    alertmanager_config:
+      global:
+        smtp_smarthost: 'localhost:587'
+      route:
+        group_by: ['alertname']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 1h
+        receiver: 'web.hook'
+      receivers:
+        - name: 'web.hook'
+          webhook_configs:
+            - url: 'http://127.0.0.1:5001/'
+
+    # Grafana configuration
+    grafana_security:
+      admin_user: admin
+      admin_password: "{{ vault_grafana_password }}"
+    
+    grafana_database:
+      type: sqlite3
+    
+    grafana_datasources:
+      - name: prometheus
+        type: prometheus
+        url: http://localhost:9090
+        access: proxy
+        isDefault: true
+    
+    grafana_dashboards:
+      - dashboard_id: 1860  # Node Exporter Full
+        revision_id: 29
+        datasource: prometheus
+      - dashboard_id: 9628  # PostgreSQL Database
+        revision_id: 7
+        datasource: prometheus
+
+  roles:
+    - prometheus.prometheus.prometheus
+    - prometheus.prometheus.alertmanager
+    - prometheus.prometheus.node_exporter
+    - grafana.grafana.grafana
+
+# =============================================================================
+# Database Server Configuration
+# =============================================================================
+- name: Configure database server
+  hosts: database_server
+  become: true
+  vars:
+    # PostgreSQL configuration
+    postgresql_version: "12"
+    postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
+    postgresql_bin_path: "/usr/lib/postgresql/{{ postgresql_version }}/bin"
+    postgresql_config_path: "/etc/postgresql/{{ postgresql_version }}/main"
+    
+    postgresql_databases:
+      - name: testdb
+        encoding: UTF-8
+        locale: en_US.UTF-8
+        template: template0
+    
+    postgresql_users:
+      - name: testuser
+        password: "{{ vault_postgres_password }}"
+        db: testdb
+        priv: ALL
+      - name: postgres_exporter
+        password: "{{ vault_exporter_password }}"
+        db: postgres
+        priv: CONNECT
+        role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE
+    
+    postgresql_hba_entries:
+      - { type: local, database: all, user: postgres, auth_method: peer }
+      - { type: local, database: all, user: all, auth_method: peer }
+      - { type: host, database: all, user: all, address: '127.0.0.1/32', auth_method: md5 }
+      - { type: host, database: all, user: all, address: '::1/128', auth_method: md5 }
+      - { type: host, database: all, user: all, address: '0.0.0.0/0', auth_method: md5 }
+    
+    postgresql_global_config_options:
+      - option: listen_addresses
+        value: '*'
+      - option: port
+        value: 5432
+      - option: max_connections
+        value: 100
+      - option: shared_buffers
+        value: 128MB
+      - option: log_destination
+        value: 'stderr'
+      - option: logging_collector
+        value: 'on'
+      - option: log_directory
+        value: 'pg_log'
+      - option: log_filename
+        value: 'postgresql-%Y-%m-%d_%H%M%S.log'
+
+    # Postgres Exporter configuration
+    postgres_exporter_configuration:
+      data_source_name: "postgresql://postgres_exporter:{{ vault_exporter_password }}@localhost:5432/postgres?sslmode=disable"
+    
+    postgres_exporter_web_listen_address: "0.0.0.0:9187"
+
+  roles:
+    - geerlingguy.postgresql
+    - prometheus.prometheus.postgres_exporter
+    - prometheus.prometheus.node_exporter

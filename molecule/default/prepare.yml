@@ -1,0 +1,77 @@
+# =============================================================================
+# molecule/default/prepare.yml - Enhanced container preparation for two-node setup
+# =============================================================================
+
+---
+- name: Prepare all containers
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Gather facts
+      setup:
+
+    - name: Update package cache (Debian/Ubuntu)
+      apt:
+        update_cache: true
+        cache_valid_time: 600
+      when: ansible_os_family == "Debian"
+
+    - name: Update package cache (RedHat/CentOS)
+      yum:
+        update_cache: true
+      when: ansible_os_family == "RedHat"
+
+    - name: Install base system dependencies
+      package:
+        name:
+          - curl
+          - wget
+          - tar
+          - gzip
+          - unzip
+          - python3
+          - python3-pip
+          - systemd
+          - dbus
+        state: present
+
+    - name: Install network utilities for testing
+      package:
+        name:
+          - netcat-openbsd
+          - telnet
+          - net-tools
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install network utilities for testing (RedHat)
+      package:
+        name:
+          - nmap-ncat
+          - telnet
+          - net-tools
+        state: present
+      when: ansible_os_family == "RedHat"
+
+- name: Prepare monitoring server
+  hosts: monitoring_server
+  become: true
+  tasks:
+    - name: Install monitoring server specific packages
+      package:
+        name:
+          - fontconfig
+          - libfontconfig1
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Create required directories for Grafana
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /var/lib/grafana
+        - /var/log/grafana
+        - /etc/grafana
