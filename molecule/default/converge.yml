@@ -156,14 +156,20 @@
     postgresql_users:
       - name: testuser
         password: "{{ vault_postgres_password }}"
+        # Remove the deprecated 'priv' and 'db' parameters
+      - name: postgres_exporter
+        password: "{{ vault_exporter_password }}"
+        # Remove the deprecated 'priv' and 'db' parameters
+        role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE
+
+    postgresql_user_privileges:
+      - name: testuser
         db: testdb
         priv: ALL
       - name: postgres_exporter
-        password: "{{ vault_exporter_password }}"
         db: postgres
         priv: CONNECT
-        role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE
-    
+        
     postgresql_hba_entries:
       - { type: local, database: all, user: postgres, auth_method: peer }
       - { type: local, database: all, user: all, auth_method: peer }
