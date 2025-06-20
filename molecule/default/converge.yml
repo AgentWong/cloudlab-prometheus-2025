@@ -53,49 +53,86 @@
           summary: "High CPU usage detected"
           description: "{% raw %}CPU usage is above 80% on {{ $labels.instance }}{% endraw %}"
 
-    # AlertManager configuration
-    alertmanager_config:
-      global:
-        smtp_smarthost: 'localhost:587'
-      route:
-        group_by: ['alertname']
-        group_wait: 10s
-        group_interval: 10s
-        repeat_interval: 1h
-        receiver: 'web.hook'
-      receivers:
-        - name: 'web.hook'
-          webhook_configs:
-            - url: 'http://127.0.0.1:5001/'
-
-    # Grafana configuration
-    grafana_security:
-      admin_user: admin
-      admin_password: "{{ vault_grafana_password }}"
+    # AlertManager configuration - Fixed structure
+    alertmanager_route:
+      group_by: ['alertname']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'web.hook'
     
-    grafana_database:
-      type: sqlite3
-    
-    grafana_datasources:
-      - name: prometheus
-        type: prometheus
-        url: http://localhost:9090
-        access: proxy
-        isDefault: true
-    
-    grafana_dashboards:
-      - dashboard_id: 1860  # Node Exporter Full
-        revision_id: 29
-        datasource: prometheus
-      - dashboard_id: 9628  # PostgreSQL Database
-        revision_id: 7
-        datasource: prometheus
+    alertmanager_receivers:
+      - name: 'web.hook'
+        webhook_configs:
+          - url: 'http://127.0.0.1:5001/'
 
   roles:
     - prometheus.prometheus.prometheus
     - prometheus.prometheus.alertmanager
     - prometheus.prometheus.node_exporter
-    - grafana.grafana.grafana
+  
+  tasks:
+    # Install required packages for GPG key handling
+    - name: Install GPG and related packages
+      package:
+        name:
+          - gnupg
+          - software-properties-common
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    # Install Grafana repository and package
+    - name: Add Grafana GPG key
+      apt_key:
+        url: https://apt.grafana.com/gpg.key
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Add Grafana repository
+      apt_repository:
+        repo: "deb https://apt.grafana.com stable main"
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Update apt cache
+      apt:
+        update_cache: true
+      when: ansible_os_family == "Debian"
+    
+    - name: Install Grafana
+      package:
+        name: grafana
+        state: present
+    
+    - name: Configure Grafana admin password
+      ini_file:
+        path: /etc/grafana/grafana.ini
+        section: security
+        option: admin_password
+        value: admin123
+        backup: true
+      notify: restart grafana
+    
+    - name: Configure Grafana to listen on all interfaces
+      ini_file:
+        path: /etc/grafana/grafana.ini
+        section: server
+        option: http_addr
+        value: "0.0.0.0"
+        backup: true
+      notify: restart grafana
+    
+    - name: Start and enable Grafana service
+      systemd:
+        name: grafana-server
+        state: started
+        enabled: true
+  
+  handlers:
+    - name: restart grafana
+      systemd:
+        name: grafana-server
+        state: restarted
 
 # =============================================================================
 # Database Server Configuration
