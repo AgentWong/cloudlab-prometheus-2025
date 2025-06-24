@@ -6,6 +6,7 @@
 collections:
   - name: prometheus.prometheus
   - name: community.general
+  - name: community.grafana
   - name: community.postgresql
   - name: ansible.posix
 

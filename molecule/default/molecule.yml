@@ -26,6 +26,8 @@ platforms:
       - SYS_ADMIN
     groups:
       - monitoring_server
+    networks:
+      - name: prometheus-net
     published_ports:
       - "9090:9090"  # Prometheus
       - "3000:3000"  # Grafana
@@ -46,6 +48,8 @@ platforms:
       - SYS_ADMIN
     groups:
       - database_server
+    networks:
+      - name: prometheus-net
     published_ports:
       - "5432:5432"  # PostgreSQL
       - "9187:9187"  # Postgres Exporter
