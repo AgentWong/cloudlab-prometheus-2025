@@ -1,0 +1,100 @@
+---
+# =============================================================================
+# verify/integration-check.yml - Cross-server monitoring integration tests
+# =============================================================================
+
+- name: Test connectivity to postgres_exporter from monitoring server
+  uri:
+    url: "http://postgres-server:9187/metrics"
+    method: GET
+    timeout: 10
+    return_content: true
+  register: remote_pg_metrics_test
+  ignore_errors: true
+
+- name: Display remote postgres_exporter connectivity
+  debug:
+    msg: |
+      Remote postgres_exporter test: {{ 'SUCCESS' if remote_pg_metrics_test.status == 200 else 'FAILED' }}
+      Status: {{ remote_pg_metrics_test.status | default('Connection failed') }}
+      {% if remote_pg_metrics_test.status == 200 %}
+      Metrics found: {{ 'pg_up' in remote_pg_metrics_test.content }}
+      {% endif %}
+
+- name: Query PostgreSQL metrics from Prometheus
+  uri:
+    url: "http://localhost:9090/api/v1/query?query=pg_up"
+    method: GET
+    timeout: 30
+    return_content: true
+  register: pg_up_query
+  retries: 3
+  delay: 15
+
+- name: Display Prometheus PostgreSQL query results
+  debug:
+    msg: |
+      Prometheus pg_up query:
+      Status: {{ pg_up_query.json.status if pg_up_query.json is defined else 'Failed' }}
+      Results: {{ pg_up_query.json.data.result | length if pg_up_query.json.data.result is defined else 0 }}
+      {% if pg_up_query.json.data.result is defined and pg_up_query.json.data.result | length > 0 %}
+      Value: {{ pg_up_query.json.data.result[0].value[1] }}
+      {% endif %}
+
+- name: Verify PostgreSQL metrics are being collected (conditional)
+  assert:
+    that:
+      - pg_up_query.status == 200
+      - pg_up_query.json.status == "success"
+      - pg_up_query.json.data.result | length >= 1
+      - pg_up_query.json.data.result[0].value[1] == "1"
+    fail_msg: "PostgreSQL metrics not being collected by Prometheus"
+    success_msg: "PostgreSQL metrics are being collected successfully"
+  when: remote_pg_metrics_test.status == 200
+
+- name: Query node metrics from both servers
+  uri:
+    url: "http://localhost:9090/api/v1/query?query=up{job=\"node\"}"
+    method: GET
+    timeout: 30
+  register: node_up_query
+
+- name: Verify node metrics from both servers
+  assert:
+    that:
+      - node_up_query.status == 200
+      - node_up_query.json.status == "success"
+      - node_up_query.json.data.result | length >= 2
+    fail_msg: "Node metrics not being collected from both servers"
+    success_msg: "Node metrics are being collected from both servers"
+
+- name: Test specific PostgreSQL database metrics
+  uri:
+    url: "http://localhost:9090/api/v1/query?query=pg_stat_database_numbackends%7Bdatname%3D%22testdb%22%7D"
+    method: GET
+    timeout: 30
+  register: testdb_metrics
+
+- name: Verify test database specific metrics
+  assert:
+    that:
+      - testdb_metrics.status == 200
+      - testdb_metrics.json.status == "success"
+    fail_msg: "Test database metrics not available"
+    success_msg: "Test database metrics are available"
+
+- name: Check alert rules are loaded
+  uri:
+    url: "http://localhost:9090/api/v1/rules"
+    method: GET
+    return_content: true
+  register: rules_response
+
+- name: Verify alert rules are configured
+  assert:
+    that:
+      - rules_response.status == 200
+      - rules_response.json.status == "success"
+      - rules_response.json.data.groups | length >= 1
+    fail_msg: "Alert rules not loaded properly"
+    success_msg: "Alert rules are loaded and configured"

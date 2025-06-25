@@ -1,0 +1,46 @@
+---
+# =============================================================================
+# converge/postgres-activity.yml - Database activity monitoring setup
+# =============================================================================
+
+- name: Create database activity script
+  copy:
+    dest: /usr/local/bin/db_activity.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      while true; do
+        # Connect to both databases and perform light activity
+        sudo -u postgres psql -d testdb -c "SELECT count(*) FROM sample_data;" > /dev/null 2>&1
+        sudo -u postgres psql -d postgres -c "SELECT datname FROM pg_database;" > /dev/null 2>&1
+        
+        # Test pgexporter user connectivity
+        PGPASSWORD="{{ vault_exporter_password }}" psql -h localhost -U pgexporter -d postgres -c "SELECT 1;" > /dev/null 2>&1
+        
+        sleep 30
+      done
+
+- name: Create systemd service for database activity
+  copy:
+    dest: /etc/systemd/system/db-activity.service
+    content: |
+      [Unit]
+      Description=Database Activity Generator
+      After=postgresql.service postgres_exporter.service
+      Requires=postgresql.service
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/db_activity.sh
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Start and enable database activity service
+  systemd:
+    name: db-activity
+    state: started
+    enabled: true
+    daemon_reload: true

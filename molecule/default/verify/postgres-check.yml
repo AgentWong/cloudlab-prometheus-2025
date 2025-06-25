@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# verify/postgres-check.yml - PostgreSQL service and connectivity verification
+# =============================================================================
+
+- name: Populate service facts
+  ansible.builtin.service_facts:
+
+- name: Check PostgreSQL process is actually running
+  command: pgrep -f "postgres.*main"
+  register: postgres_process
+  changed_when: false
+
+- name: Verify PostgreSQL process is running
+  assert:
+    that:
+      - postgres_process.stdout_lines | length > 0
+    fail_msg: "PostgreSQL process is not running"
+    success_msg: "PostgreSQL process is running"
+
+- name: Test PostgreSQL connection
+  postgresql_ping:
+    db: postgres
+    login_user: postgres
+  become_user: postgres
+  register: postgres_connection
+
+- name: Verify PostgreSQL is accepting connections
+  assert:
+    that:
+      - postgres_connection is not failed
+    fail_msg: "Cannot connect to PostgreSQL"
+    success_msg: "PostgreSQL is accepting connections"
+
+- name: Check if test database exists and has data
+  postgresql_query:
+    db: testdb
+    login_user: postgres
+    query: "SELECT count(*) as record_count FROM sample_data"
+  become_user: postgres
+  register: testdb_data
+
+- name: Verify test database has sample data
+  assert:
+    that:
+      - testdb_data.query_result[0].record_count > 0
+    fail_msg: "Test database has no sample data"
+    success_msg: "Test database contains {{ testdb_data.query_result[0].record_count }} records"
+
+- name: Check if pgexporter user exists
+  postgresql_query:
+    db: postgres
+    login_user: postgres
+    query: "SELECT 1 FROM pg_user WHERE usename='pgexporter'"
+  become_user: postgres
+  register: pgexporter_user_exists
+
+- name: Verify pgexporter user was created
+  assert:
+    that:
+      - pgexporter_user_exists.rowcount == 1
+    fail_msg: "pgexporter user was not created"
+    success_msg: "pgexporter user exists"
+
+- name: Test pgexporter basic connection to postgres database
+  postgresql_query:
+    db: postgres
+    login_user: pgexporter
+    login_password: "{{ vault_exporter_password }}"
+    login_host: localhost
+    query: "SELECT 1 as basic_test"
+  register: pg_exporter_basic_test
+  ignore_errors: true
+
+- name: Display pgexporter basic connectivity
+  debug:
+    msg: |
+      Basic pgexporter connectivity: {{ 'SUCCESS' if pg_exporter_basic_test is not failed else 'FAILED' }}
+      {{ pg_exporter_basic_test.msg if pg_exporter_basic_test is failed else 'Connected successfully' }}

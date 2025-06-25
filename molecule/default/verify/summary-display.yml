@@ -1,0 +1,17 @@
+---
+# =============================================================================
+# verify/summary-display.yml - Final monitoring stack summary
+# =============================================================================
+
+- name: Display monitoring stack summary
+  debug:
+    msg: |
+      Monitoring Stack Verification Summary:
+      - Prometheus: Running and collecting metrics
+      - AlertManager: Running and configured
+      - Grafana: Running and healthy
+      - PostgreSQL: Running with test database
+      - Postgres Exporter: {{ 'Running and exposing metrics' if remote_pg_metrics_test.status == 200 else 'NOT WORKING - check logs above' }}
+      - Node Exporters: Running on both servers
+      - Cross-server metrics: {{ 'Successfully collected' if remote_pg_metrics_test.status == 200 else 'FAILED - postgres_exporter not accessible' }}
+      - Alert rules: Loaded and configured

@@ -1,0 +1,57 @@
+---
+# =============================================================================
+# verify/prometheus-check.yml - Prometheus service and API verification
+# =============================================================================
+
+- name: Check if Prometheus service is running
+  systemd:
+    name: prometheus
+  register: prometheus_service
+
+- name: Verify Prometheus service is active
+  assert:
+    that:
+      - prometheus_service.status.ActiveState == "active"
+      - prometheus_service.status.SubState == "running"
+    fail_msg: "Prometheus service is not running properly"
+    success_msg: "Prometheus service is active and running"
+
+- name: Wait for Prometheus HTTP endpoint to be ready
+  uri:
+    url: "http://localhost:9090/-/ready"
+    method: GET
+    timeout: 10
+  register: prometheus_ready_check
+  until: prometheus_ready_check.status == 200
+  retries: 30
+  delay: 10
+
+- name: Test Prometheus API - targets endpoint
+  uri:
+    url: "http://localhost:9090/api/v1/targets"
+    method: GET
+    timeout: 30
+  register: targets_response
+
+- name: Display detailed Prometheus targets information
+  debug:
+    msg: |
+      Prometheus Targets Debug:
+      Active targets: {{ targets_response.json.data.activeTargets | length if targets_response.json.data.activeTargets is defined else 0 }}
+      
+      Target details:
+      {% for target in targets_response.json.data.activeTargets %}
+      - URL: {{ target.scrapeUrl }}
+        Health: {{ target.health }}
+        Last Error: {{ target.lastError if target.lastError else 'None' }}
+        Last Scrape: {{ target.lastScrape }}
+      {% endfor %}
+
+- name: Verify Prometheus targets are being scraped
+  assert:
+    that:
+      - targets_response.status == 200
+      - targets_response.json.status == "success"
+      - targets_response.json.data.activeTargets | length >= 3
+    fail_msg: "Not enough active targets found"
+    success_msg: "All expected targets are active"

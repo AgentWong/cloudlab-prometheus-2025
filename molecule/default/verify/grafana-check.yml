@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# verify/grafana-check.yml - Grafana service and health verification
+# =============================================================================
+
+- name: Check if Grafana service is running
+  systemd:
+    name: grafana-server
+  register: grafana_service
+
+- name: Verify Grafana service is active
+  assert:
+    that:
+      - grafana_service.status.ActiveState == "active"
+      - grafana_service.status.SubState == "running"
+    fail_msg: "Grafana service is not running properly"
+    success_msg: "Grafana service is active and running"
+
+- name: Test Grafana health endpoint
+  uri:
+    url: "http://localhost:3000/api/health"
+    method: GET
+    timeout: 30
+  register: grafana_health
+  retries: 15
+  delay: 10
+
+- name: Verify Grafana is responding
+  assert:
+    that:
+      - grafana_health.status == 200
+      - grafana_health.json.database == "ok"
+    fail_msg: "Grafana health check failed"
+    success_msg: "Grafana is healthy"

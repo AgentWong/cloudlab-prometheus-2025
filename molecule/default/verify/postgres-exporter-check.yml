@@ -1,0 +1,65 @@
+---
+# =============================================================================
+# verify/postgres-exporter-check.yml - Postgres exporter verification
+# =============================================================================
+
+- name: Check postgres_exporter service status
+  systemd:
+    name: postgres_exporter
+  register: postgres_exporter_service
+
+- name: Display postgres_exporter service details
+  debug:
+    msg: |
+      Postgres Exporter Service:
+      - Active: {{ postgres_exporter_service.status.ActiveState }}
+      - SubState: {{ postgres_exporter_service.status.SubState }}
+      - Result: {{ postgres_exporter_service.status.Result }}
+
+- name: Get postgres_exporter logs
+  command: journalctl -u postgres_exporter --no-pager -n 15
+  register: pg_exporter_logs
+  changed_when: false
+
+- name: Display postgres_exporter logs
+  debug:
+    msg: |
+      Recent postgres_exporter logs:
+      {{ pg_exporter_logs.stdout_lines | join('\n') }}
+
+- name: Test postgres_exporter metrics endpoint
+  uri:
+    url: "http://localhost:9187/metrics"
+    method: GET
+    timeout: 30
+    return_content: true
+  register: postgres_metrics
+  retries: 3
+  delay: 5
+
+- name: Extract key metrics from postgres_exporter
+  set_fact:
+    pg_up_value: "{{ postgres_metrics.content | regex_search('pg_up ([0-1])', '\\1') | first | default('unknown') }}"
+    pg_version_found: "{{ 'pg_version_info' in postgres_metrics.content }}"
+    connection_metrics: "{{ postgres_metrics.content | regex_findall('pg_stat_database_numbackends.*') }}"
+
+- name: Display postgres_exporter metrics analysis
+  debug:
+    msg: |
+      Postgres Exporter Metrics Status:
+      - HTTP Status: {{ postgres_metrics.status }}
+      - pg_up value: {{ pg_up_value }}
+      - Version info present: {{ pg_version_found }}
+      - Connection metrics found: {{ connection_metrics | length }} entries
+
+- name: Verify postgres_exporter basic functionality
+  assert:
+    that:
+      - postgres_metrics.status == 200
+      - pg_up_value == "1"
+    fail_msg: |
+      Postgres_exporter is not working properly:
+      - HTTP status: {{ postgres_metrics.status }}
+      - pg_up value: {{ pg_up_value }}
+      Check the logs above for connection issues.
+    success_msg: "Postgres_exporter is connected and working (pg_up=1)"

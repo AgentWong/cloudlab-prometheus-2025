@@ -1,0 +1,51 @@
+---
+# =============================================================================
+# converge/grafana-config.yml - Grafana datasources and dashboard configuration
+# =============================================================================
+
+- name: Create Prometheus datasource
+  community.grafana.grafana_datasource:
+    name: "Prometheus"
+    grafana_url: "http://localhost:3000"
+    grafana_user: "admin"
+    grafana_password: "{{ vault_grafana_password }}"
+    org_id: 1
+    ds_type: "prometheus"
+    ds_url: "http://localhost:9090"
+    access: "proxy"
+    is_default: true
+  register: prometheus_datasource_result
+
+- name: Display datasource creation result
+  debug:
+    msg: "Prometheus datasource: {{ prometheus_datasource_result.msg }}"
+
+- name: Import PostgreSQL Database dashboard
+  community.grafana.grafana_dashboard:
+    grafana_url: "http://localhost:3000"
+    grafana_user: "admin" 
+    grafana_password: "{{ vault_grafana_password }}"
+    dashboard_id: "9628"
+    dashboard_revision: "7"
+    overwrite: true
+    state: present
+  register: postgres_dashboard_result
+
+- name: Display dashboard import result
+  debug:
+    msg: "PostgreSQL dashboard: {{ postgres_dashboard_result.msg }}"
+
+- name: Import Node Exporter Full dashboard
+  community.grafana.grafana_dashboard:
+    grafana_url: "http://localhost:3000"
+    grafana_user: "admin"
+    grafana_password: "{{ vault_grafana_password }}"
+    dashboard_id: "1860"
+    dashboard_revision: "37"
+    overwrite: true
+    state: present
+  register: node_dashboard_result
+
+- name: Display Node Exporter dashboard import result
+  debug:
+    msg: "Node Exporter dashboard: {{ node_dashboard_result.msg }}"

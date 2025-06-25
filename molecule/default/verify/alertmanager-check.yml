@@ -1,0 +1,33 @@
+---
+# =============================================================================
+# verify/alertmanager-check.yml - AlertManager service verification
+# =============================================================================
+
+- name: Check if AlertManager service is running
+  systemd:
+    name: alertmanager
+  register: alertmanager_service
+
+- name: Verify AlertManager service is active
+  assert:
+    that:
+      - alertmanager_service.status.ActiveState == "active"
+      - alertmanager_service.status.SubState == "running"
+    fail_msg: "AlertManager service is not running properly"
+    success_msg: "AlertManager service is active and running"
+
+- name: Test AlertManager API
+  uri:
+    url: "http://localhost:9093/api/v2/status"
+    method: GET
+    timeout: 30
+  register: alertmanager_status
+  retries: 10
+  delay: 5
+
+- name: Verify AlertManager is responding
+  assert:
+    that:
+      - alertmanager_status.status == 200
+    fail_msg: "AlertManager API not responding"
+    success_msg: "AlertManager API is responding"
