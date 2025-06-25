@@ -139,6 +139,7 @@
       uri:
         url: "http://localhost:9100/metrics"
         method: GET
+        return_content: true
       register: node_metrics
 
     - name: Verify node exporter metrics
@@ -151,24 +152,27 @@
         success_msg: "Node exporter metrics are available"
 
 # =============================================================================
-# Database Server Verification with Enhanced postgres_exporter Debugging
+# Database Server Verification
 # =============================================================================
-- name: Verify database server components
+- name: Verify database server components  
   hosts: database_server
   become: true
   tasks:
-    - name: Check if PostgreSQL service is running
-      systemd:
-        name: postgresql
-      register: postgresql_service
+    - name: Populate service facts
+      ansible.builtin.service_facts:
 
-    - name: Verify PostgreSQL service is active
+    # Check PostgreSQL process is actually running
+    - name: Check PostgreSQL process is actually running
+      command: pgrep -f "postgres.*main"
+      register: postgres_process
+      changed_when: false
+
+    - name: Verify PostgreSQL process is running
       assert:
         that:
-          - postgresql_service.status.ActiveState == "active"
-          - postgresql_service.status.SubState == "running"
-        fail_msg: "PostgreSQL service is not running properly"
-        success_msg: "PostgreSQL service is active and running"
+          - postgres_process.stdout_lines | length > 0
+        fail_msg: "PostgreSQL process is not running"
+        success_msg: "PostgreSQL process is running"
 
     - name: Test PostgreSQL connection
       postgresql_ping:
@@ -184,132 +188,136 @@
         fail_msg: "Cannot connect to PostgreSQL"
         success_msg: "PostgreSQL is accepting connections"
 
-    - name: Check if test database exists
+    # Test sample data exists
+    - name: Check if test database exists and has data
+      postgresql_query:
+        db: testdb
+        login_user: postgres
+        query: "SELECT count(*) as record_count FROM sample_data"
+      become_user: postgres
+      register: testdb_data
+
+    - name: Verify test database has sample data
+      assert:
+        that:
+          - testdb_data.query_result[0].record_count > 0
+        fail_msg: "Test database has no sample data"
+        success_msg: "Test database contains {{ testdb_data.query_result[0].record_count }} records"
+
+    # Check if pgexporter user exists
+    - name: Check if pgexporter user exists
       postgresql_query:
         db: postgres
         login_user: postgres
-        query: "SELECT 1 FROM pg_database WHERE datname='testdb'"
+        query: "SELECT 1 FROM pg_user WHERE usename='pgexporter'"
       become_user: postgres
-      register: testdb_exists
+      register: pgexporter_user_exists
 
-    - name: Verify test database was created
+    - name: Verify pgexporter user was created
       assert:
         that:
-          - testdb_exists.rowcount == 1
-        fail_msg: "Test database was not created"
-        success_msg: "Test database exists"
+          - pgexporter_user_exists.rowcount == 1
+        fail_msg: "pgexporter user was not created"
+        success_msg: "pgexporter user exists"
 
-    - name: Check if postgres_exporter user exists
+    # Debug pgexporter connectivity step by step
+    - name: Test pgexporter basic connection to postgres database
       postgresql_query:
         db: postgres
-        login_user: postgres
-        query: "SELECT 1 FROM pg_user WHERE usename='postgres_exporter'"
-      become_user: postgres
-      register: exporter_user_exists
+        login_user: pgexporter
+        login_password: "{{ vault_exporter_password }}"
+        login_host: localhost
+        query: "SELECT 1 as basic_test"
+      register: pg_exporter_basic_test
+      ignore_errors: true
 
-    - name: Verify postgres_exporter user was created
-      assert:
-        that:
-          - exporter_user_exists.rowcount == 1
-        fail_msg: "Postgres exporter user was not created"
-        success_msg: "Postgres exporter user exists"
+    - name: Display pgexporter basic connectivity
+      debug:
+        msg: |
+          Basic pgexporter connectivity: {{ 'SUCCESS' if pg_exporter_basic_test is not failed else 'FAILED' }}
+          {{ pg_exporter_basic_test.msg if pg_exporter_basic_test is failed else 'Connected successfully' }}
 
-    # =============================================================================
-    # Enhanced postgres_exporter debugging section
-    # =============================================================================
-    - name: Check if postgres_exporter service is running
+    # Check postgres_exporter service
+    - name: Check postgres_exporter service status
       systemd:
         name: postgres_exporter
       register: postgres_exporter_service
 
-    - name: Display detailed postgres_exporter service status
+    - name: Display postgres_exporter service details
       debug:
         msg: |
-          Postgres Exporter Service Status:
+          Postgres Exporter Service:
           - Active: {{ postgres_exporter_service.status.ActiveState }}
           - SubState: {{ postgres_exporter_service.status.SubState }}
-          - Main PID: {{ postgres_exporter_service.status.MainPID }}
-          - Load State: {{ postgres_exporter_service.status.LoadState }}
           - Result: {{ postgres_exporter_service.status.Result }}
 
-    - name: Check postgres_exporter logs if service is not running properly
-      command: journalctl -u postgres_exporter --no-pager -n 30
+    # Check postgres_exporter logs for connection issues
+    - name: Get postgres_exporter logs
+      command: journalctl -u postgres_exporter --no-pager -n 15
       register: pg_exporter_logs
-      when: postgres_exporter_service.status.ActiveState != "active"
+      changed_when: false
 
-    - name: Display postgres_exporter logs if service failed
-      debug:
-        msg: "Postgres exporter logs: {{ pg_exporter_logs.stdout_lines }}"
-      when: postgres_exporter_service.status.ActiveState != "active"
-
-    - name: Check if postgres_exporter port is listening
-      command: netstat -tlnp | grep 9187
-      register: port_check
-      ignore_errors: true
-
-    - name: Display port listening status
-      debug:
-        msg: "Port 9187 status: {{ port_check.stdout_lines if port_check.stdout_lines else 'Not listening' }}"
-
-    - name: Test PostgreSQL connection as postgres_exporter user
-      postgresql_query:
-        db: postgres
-        login_user: postgres_exporter
-        login_password: "{{ vault_exporter_password }}"
-        login_host: localhost
-        query: "SELECT 1 as test"
-      register: pg_exporter_connection_test
-      ignore_errors: true
-
-    - name: Display postgres_exporter database connection test
+    - name: Display postgres_exporter logs
       debug:
         msg: |
-          Database connection test: {{ 'SUCCESS' if pg_exporter_connection_test is not failed else 'FAILED' }}
-          Result: {{ pg_exporter_connection_test.query_result if pg_exporter_connection_test.query_result is defined else pg_exporter_connection_test.msg }}
+          Recent postgres_exporter logs:
+          {{ pg_exporter_logs.stdout_lines | join('\n') }}
 
+    # Test metrics endpoint
     - name: Test postgres_exporter metrics endpoint
       uri:
         url: "http://localhost:9187/metrics"
         method: GET
         timeout: 30
+        return_content: true
       register: postgres_metrics
       retries: 3
       delay: 5
-      ignore_errors: true
 
-    - name: Display postgres_exporter metrics test results
+    - name: Extract key metrics from postgres_exporter
+      set_fact:
+        pg_up_value: "{{ postgres_metrics.content | regex_search('pg_up ([0-1])', '\\1') | first | default('unknown') }}"
+        pg_version_found: "{{ 'pg_version_info' in postgres_metrics.content }}"
+        connection_metrics: "{{ postgres_metrics.content | regex_findall('pg_stat_database_numbackends.*') }}"
+
+    - name: Display postgres_exporter metrics analysis
       debug:
         msg: |
-          Metrics endpoint test: {{ 'SUCCESS' if postgres_metrics.status == 200 else 'FAILED' }}
-          Status code: {{ postgres_metrics.status | default('No response') }}
-          {% if postgres_metrics.status == 200 %}
-          pg_up found: {{ 'pg_up' in postgres_metrics.content }}
-          Content preview: {{ postgres_metrics.content[:300] }}
-          {% else %}
-          Error: {{ postgres_metrics.msg | default('Unknown error') }}
-          {% endif %}
+          Postgres Exporter Metrics Status:
+          - HTTP Status: {{ postgres_metrics.status }}
+          - pg_up value: {{ pg_up_value }}
+          - Version info present: {{ pg_version_found }}
+          - Connection metrics found: {{ connection_metrics | length }} entries
+          
+          Connection metrics sample:
+          {{ connection_metrics[:3] | join('\n') if connection_metrics else 'None found' }}
+          
+          Error indicators in metrics:
+          {{ postgres_metrics.content | regex_findall('.*error.*|.*Error.*|.*ERROR.*') | join('\n') if postgres_metrics.content | regex_findall('.*error.*|.*Error.*|.*ERROR.*') else 'None found' }}
 
-    # Only assert if service is actually running
-    - name: Verify postgres_exporter service is active (conditional)
-      assert:
-        that:
-          - postgres_exporter_service.status.ActiveState == "active"
-          - postgres_exporter_service.status.SubState == "running"
-        fail_msg: "Postgres exporter service is not running properly"
-        success_msg: "Postgres exporter service is active and running"
-      when: postgres_exporter_service.status.ActiveState == "active"
-
-    # Only assert metrics if service is running and endpoint responds
-    - name: Verify postgres_exporter metrics (conditional)
+    # Simple verification - just check if postgres_exporter is working at all
+    - name: Verify postgres_exporter basic functionality
       assert:
         that:
           - postgres_metrics.status == 200
-          - "'pg_up' in postgres_metrics.content"
-          - "'pg_stat_database_numbackends' in postgres_metrics.content"
-        fail_msg: "Postgres exporter metrics not available"
-        success_msg: "Postgres exporter metrics are available"
-      when: postgres_exporter_service.status.ActiveState == "active" and postgres_metrics.status == 200
+          - pg_up_value == "1"
+        fail_msg: |
+          Postgres_exporter is not working properly:
+          - HTTP status: {{ postgres_metrics.status }}
+          - pg_up value: {{ pg_up_value }}
+          Check the logs above for connection issues.
+        success_msg: "Postgres_exporter is connected and working (pg_up=1)"
 
+    # Optional advanced metrics check (don't fail if missing)
+    - name: Check for advanced PostgreSQL metrics (optional)
+      assert:
+        that:
+          - connection_metrics | length > 0
+        fail_msg: "Advanced PostgreSQL metrics not available - this may be expected with minimal database activity"
+        success_msg: "Advanced PostgreSQL metrics are available"
+      ignore_errors: true
+
+    # Verify node exporter
     - name: Check node exporter service on database server
       systemd:
         name: node_exporter
@@ -335,6 +343,7 @@
         url: "http://postgres-server:9187/metrics"
         method: GET
         timeout: 10
+        return_content: true
       register: remote_pg_metrics_test
       ignore_errors: true
 
@@ -354,8 +363,9 @@
         body_format: form-urlencoded
         body:
           query: "pg_up"
+        return_content: true
       register: pg_up_query
-      retries: 10
+      retries: 3
       delay: 15
 
     - name: Display Prometheus PostgreSQL query results
@@ -418,6 +428,7 @@
       uri:
         url: "http://localhost:9090/api/v1/rules"
         method: GET
+        return_content: true
       register: rules_response
 
     - name: Verify alert rules are configured

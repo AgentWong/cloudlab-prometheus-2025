@@ -60,10 +60,11 @@ provisioner:
     defaults:
       interpreter_python: auto_silent
       callback_whitelist: profile_tasks, timer
-      result_format: yaml
+      callback_result_format: yaml
+      callback_format_pretty: true
       host_key_checking: false
   env:
-    ANSIBLE_ROLES_PATH: ../../roles  # Additional environment variable
+    ANSIBLE_ROLES_PATH: ../../roles
   inventory:
     group_vars:
       all:
@@ -79,7 +80,7 @@ provisioner:
             password: "{{ vault_postgres_password }}"
             db: testdb
             priv: "ALL"
-          - name: postgres_exporter
+          - name: pgexporter
             password: "{{ vault_exporter_password }}"
             db: postgres
             priv: "CONNECT"

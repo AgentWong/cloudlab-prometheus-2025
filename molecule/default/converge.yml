@@ -216,7 +216,7 @@
     postgresql_users:
       - name: testuser
         password: "{{ vault_postgres_password }}"
-      - name: postgres_exporter
+      - name: pgexporter
         password: "{{ vault_exporter_password }}"
         role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE
 
@@ -224,8 +224,11 @@
       - name: testuser
         db: testdb
         priv: ALL
-      - name: postgres_exporter
+      - name: pgexporter
         db: postgres
+        priv: CONNECT
+      - name: pgexporter
+        db: testdb
         priv: CONNECT
         
     postgresql_hba_entries:
@@ -253,13 +256,168 @@
       - option: log_filename
         value: 'postgresql-%Y-%m-%d_%H%M%S.log'
 
-    # Postgres Exporter configuration
-    postgres_exporter_configuration:
-      data_source_name: "postgresql://postgres_exporter:{{ vault_exporter_password }}@localhost:5432/postgres?sslmode=disable"
-    
     postgres_exporter_web_listen_address: "0.0.0.0:9187"
+    postgres_exporter_system_user: pgexporter
 
   roles:
     - geerlingguy.postgresql
     - prometheus.prometheus.postgres_exporter
     - prometheus.prometheus.node_exporter
+  
+  post_tasks:
+    # Wait for PostgreSQL to be fully ready
+    - name: Wait for PostgreSQL to be ready
+      postgresql_ping:
+        db: postgres
+        login_user: postgres
+      become_user: postgres
+      retries: 10
+      delay: 5
+
+    # Create sample data and maintain database activity
+    - name: Create sample table in test database
+      postgresql_query:
+        db: testdb
+        login_user: postgres
+        query: |
+          CREATE TABLE IF NOT EXISTS sample_data (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            value INTEGER
+          );
+      become_user: postgres
+
+    - name: Insert sample data
+      postgresql_query:
+        db: testdb
+        login_user: postgres
+        query: |
+          INSERT INTO sample_data (name, value) 
+          SELECT 
+            'test_record_' || generate_series(1, 100),
+            (random() * 1000)::integer
+          ON CONFLICT DO NOTHING;
+      become_user: postgres
+
+    # Grant comprehensive permissions to pgexporter
+    - name: Grant basic permissions to pgexporter
+      postgresql_query:
+        db: postgres
+        login_user: postgres
+        query: |
+          GRANT CONNECT ON DATABASE postgres TO pgexporter;
+          GRANT CONNECT ON DATABASE testdb TO pgexporter;
+      become_user: postgres
+
+    - name: Grant schema usage permissions
+      postgresql_query:
+        db: postgres
+        login_user: postgres
+        query: |
+          GRANT USAGE ON SCHEMA public TO pgexporter;
+          GRANT USAGE ON SCHEMA information_schema TO pgexporter;
+      become_user: postgres
+
+    - name: Grant select permissions on system tables
+      postgresql_query:
+        db: postgres
+        login_user: postgres
+        query: |
+          GRANT SELECT ON ALL TABLES IN SCHEMA information_schema TO pgexporter;
+          GRANT SELECT ON ALL TABLES IN SCHEMA pg_catalog TO pgexporter;
+      become_user: postgres
+
+    # Grant permissions on testdb specifically
+    - name: Grant pgexporter permissions on testdb
+      postgresql_query:
+        db: testdb
+        login_user: postgres
+        query: |
+          GRANT USAGE ON SCHEMA public TO pgexporter;
+          GRANT SELECT ON ALL TABLES IN SCHEMA public TO pgexporter;
+          GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO pgexporter;
+      become_user: postgres
+
+    # Verify pgexporter can connect
+    - name: Test pgexporter connection to postgres database
+      postgresql_query:
+        db: postgres
+        login_user: pgexporter
+        login_password: "{{ vault_exporter_password }}"
+        login_host: localhost
+        query: "SELECT 1 as connection_test"
+      register: pg_exporter_postgres_test
+
+    - name: Display pgexporter postgres connection test
+      debug:
+        msg: "pgexporter connection to postgres DB: {{ 'SUCCESS' if pg_exporter_postgres_test is not failed else 'FAILED' }}"
+
+    # Test testdb connection
+    - name: Test pgexporter connection to testdb
+      postgresql_query:
+        db: testdb
+        login_user: pgexporter
+        login_password: "{{ vault_exporter_password }}"
+        login_host: localhost
+        query: "SELECT count(*) as record_count FROM sample_data"
+      register: pg_exporter_testdb_test
+
+    - name: Display pgexporter testdb connection test
+      debug:
+        msg: "pgexporter connection to testdb: {{ 'SUCCESS' if pg_exporter_testdb_test is not failed else 'FAILED' }}"
+
+    # Restart postgres_exporter to pick up configuration
+    - name: Restart postgres_exporter service
+      systemd:
+        name: postgres_exporter
+        state: restarted
+      when: pg_exporter_postgres_test is not failed
+
+    # Wait for postgres_exporter to start collecting metrics
+    - name: Wait for postgres_exporter to initialize
+      pause:
+        seconds: 15
+
+    # Create a background activity script to keep database active
+    - name: Create database activity script
+      copy:
+        dest: /usr/local/bin/db_activity.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          while true; do
+            # Connect to both databases and perform light activity
+            sudo -u postgres psql -d testdb -c "SELECT count(*) FROM sample_data;" > /dev/null 2>&1
+            sudo -u postgres psql -d postgres -c "SELECT datname FROM pg_database;" > /dev/null 2>&1
+            
+            # Test pgexporter user connectivity
+            PGPASSWORD="{{ vault_exporter_password }}" psql -h localhost -U pgexporter -d postgres -c "SELECT 1;" > /dev/null 2>&1
+            
+            sleep 30
+          done
+
+    - name: Create systemd service for database activity
+      copy:
+        dest: /etc/systemd/system/db-activity.service
+        content: |
+          [Unit]
+          Description=Database Activity Generator
+          After=postgresql.service postgres_exporter.service
+          Requires=postgresql.service
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/db_activity.sh
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start and enable database activity service
+      systemd:
+        name: db-activity
+        state: started
+        enabled: true
+        daemon_reload: true
