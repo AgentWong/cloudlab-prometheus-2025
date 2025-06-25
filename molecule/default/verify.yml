@@ -1,5 +1,5 @@
 # =============================================================================
-# molecule/default/verify.yml - Enhanced verification with postgres_exporter debugging
+# molecule/default/verify.yml - Fixed verification with proper Prometheus queries
 # =============================================================================
 
 ---
@@ -356,13 +356,12 @@
           Metrics found: {{ 'pg_up' in remote_pg_metrics_test.content }}
           {% endif %}
 
+    # FIXED: Use proper URL query string format for Prometheus API
     - name: Query PostgreSQL metrics from Prometheus
       uri:
-        url: "http://localhost:9090/api/v1/query"
+        url: "http://localhost:9090/api/v1/query?query=pg_up"
         method: GET
-        body_format: form-urlencoded
-        body:
-          query: "pg_up"
+        timeout: 30
         return_content: true
       register: pg_up_query
       retries: 3
@@ -389,13 +388,12 @@
         success_msg: "PostgreSQL metrics are being collected successfully"
       when: remote_pg_metrics_test.status == 200
 
+    # FIXED: Use proper URL query string format
     - name: Query node metrics from both servers
       uri:
-        url: "http://localhost:9090/api/v1/query"
+        url: "http://localhost:9090/api/v1/query?query=up{job=\"node\"}"
         method: GET
-        body_format: form-urlencoded
-        body:
-          query: "up{job='node'}"
+        timeout: 30
       register: node_up_query
 
     - name: Verify node metrics from both servers
@@ -407,13 +405,12 @@
         fail_msg: "Node metrics not being collected from both servers"
         success_msg: "Node metrics are being collected from both servers"
 
+    # FIXED: Use proper URL query string format with URL encoding
     - name: Test specific PostgreSQL database metrics
       uri:
-        url: "http://localhost:9090/api/v1/query"
+        url: "http://localhost:9090/api/v1/query?query=pg_stat_database_numbackends%7Bdatname%3D%22testdb%22%7D"
         method: GET
-        body_format: form-urlencoded
-        body:
-          query: "pg_stat_database_numbackends{datname='testdb'}"
+        timeout: 30
       register: testdb_metrics
 
     - name: Verify test database specific metrics
