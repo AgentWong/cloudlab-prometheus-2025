@@ -1,0 +1,3 @@
+ansible-compat == 25.*
+molecule == 25.*
+molecule-plugins[docker] == 23.*

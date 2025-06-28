@@ -1,0 +1,5 @@
+---
+# Bare minimum requirements to run Ansible Molecule in CI
+collections:
+  - name: ansible.posix
+  - name: community.docker
