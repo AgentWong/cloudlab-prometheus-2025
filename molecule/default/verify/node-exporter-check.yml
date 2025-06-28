@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/node-exporter-check.yml - Node exporter verification (reusable)
-# =============================================================================
-
 - name: Check node exporter service
   ansible.builtin.systemd:
     name: node_exporter

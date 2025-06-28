@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/postgres-check.yml - PostgreSQL service and connectivity verification
-# =============================================================================
-
 - name: Populate service facts
   ansible.builtin.service_facts:
 

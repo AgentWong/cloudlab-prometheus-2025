@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# converge/grafana-config.yml - Grafana datasources and dashboard configuration
-# =============================================================================
-
 - name: Create Prometheus datasource
   community.grafana.grafana_datasource:
     name: "Prometheus"

@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# Main converge.yml - Clean and focused orchestration
-# =============================================================================
-
 - name: Configure monitoring server
   hosts: monitoring_server
   become: true
@@ -90,7 +86,6 @@
   become: true
   vars:
     # PostgreSQL configuration
-    postgresql_version: "13"
     postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
     postgresql_bin_path: "/usr/lib/postgresql/{{ postgresql_version }}/bin"
     postgresql_config_path: "/etc/postgresql/{{ postgresql_version }}/main"
@@ -147,6 +142,11 @@
     postgres_exporter_web_listen_address: "0.0.0.0:9187"
     postgres_exporter_system_user: pgexporter
 
+  pre_tasks:
+    - name: Set postgresql_version
+      ansible.builtin.set_fact:
+        postgresql_version: '13'
+      when: ansible_distribution == 'Debian'
   roles:
     - geerlingguy.postgresql
     - prometheus.prometheus.postgres_exporter

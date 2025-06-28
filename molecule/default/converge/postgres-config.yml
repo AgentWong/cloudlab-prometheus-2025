@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# converge/postgres-activity.yml - Database activity monitoring setup
-# =============================================================================
-
 - name: Create database activity script
   ansible.builtin.copy:
     dest: /usr/local/bin/db_activity.sh

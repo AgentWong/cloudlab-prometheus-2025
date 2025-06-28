@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/alertmanager-check.yml - AlertManager service verification
-# =============================================================================
-
 - name: Check if AlertManager service is running
   ansible.builtin.systemd:
     name: alertmanager

@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/prometheus-check.yml - Prometheus service and API verification
-# =============================================================================
-
 - name: Check if Prometheus service is running
   ansible.builtin.systemd:
     name: prometheus

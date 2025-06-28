@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/postgres-exporter-check.yml - Postgres exporter verification
-# =============================================================================
-
 - name: Check postgres_exporter service status
   ansible.builtin.systemd:
     name: postgres_exporter

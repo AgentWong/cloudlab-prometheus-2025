@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/summary-display.yml - Final monitoring stack summary
-# =============================================================================
-
 - name: Display monitoring stack summary
   ansible.builtin.debug:
     msg: |

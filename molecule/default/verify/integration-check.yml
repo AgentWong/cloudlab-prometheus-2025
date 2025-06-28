@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/integration-check.yml - Cross-server monitoring integration tests
-# =============================================================================
-
 - name: Test connectivity to postgres_exporter from monitoring server
   ansible.builtin.uri:
     url: "http://postgres-server:9187/metrics"

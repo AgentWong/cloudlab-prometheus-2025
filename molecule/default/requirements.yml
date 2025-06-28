@@ -1,7 +1,3 @@
-# =============================================================================
-# requirements.yml - Complete dependencies for two-node monitoring setup
-# =============================================================================
-
 ---
 collections:
   - name: prometheus.prometheus

@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# verify/grafana-check.yml - Grafana service and health verification
-# =============================================================================
-
 - name: Check if Grafana service is running
   ansible.builtin.systemd:
     name: grafana-server

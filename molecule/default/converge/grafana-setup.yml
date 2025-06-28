@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# converge/grafana-setup.yml - Grafana installation and basic configuration
-# =============================================================================
-
 - name: Install GPG and related packages (Debian)
   ansible.builtin.package:
     name:

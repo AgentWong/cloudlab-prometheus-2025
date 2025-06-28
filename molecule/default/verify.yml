@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# Main verify.yml - Clean orchestration of verification tasks
-# =============================================================================
-
 - name: Verify monitoring server components
   hosts: monitoring_server
   become: true

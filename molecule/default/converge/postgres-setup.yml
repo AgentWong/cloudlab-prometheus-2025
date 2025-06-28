@@ -1,8 +1,4 @@
 ---
-# =============================================================================
-# converge/postgres-setup.yml - PostgreSQL test data and user permissions
-# =============================================================================
-
 - name: Wait for PostgreSQL to be fully ready
   postgresql_ping:
     login_db: postgres
