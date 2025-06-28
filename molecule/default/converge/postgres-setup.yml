@@ -1,36 +1,64 @@
 ---
 - name: Wait for PostgreSQL to be fully ready
-  postgresql_ping:
+  community.postgresql.postgresql_ping:
     login_db: postgres
     login_user: postgres
   become_user: postgres
   retries: 10
   delay: 5
 
+- name: Check if sample table exists
+  community.postgresql.postgresql_query:
+    login_db: testdb
+    login_user: postgres
+    query: "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sample_data');"
+  become_user: postgres
+  register: table_exists
+
 - name: Create sample table in test database
-  postgresql_query:
+  community.postgresql.postgresql_query:
     login_db: testdb
     login_user: postgres
     query: |
-      CREATE TABLE IF NOT EXISTS sample_data (
+      CREATE TABLE sample_data (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         value INTEGER
       );
   become_user: postgres
+  when: not table_exists.query_result[0].exists
+
+- name: Check if sample data exists
+  community.postgresql.postgresql_query:
+    login_db: testdb
+    login_user: postgres
+    query: "SELECT COUNT(*) FROM sample_data;"
+  become_user: postgres
+  register: data_count
+  when: table_exists.query_result[0].exists or not table_exists.query_result[0].exists
 
 - name: Insert sample data
-  postgresql_query:
+  community.postgresql.postgresql_query:
     login_db: testdb
     login_user: postgres
     query: |
       INSERT INTO sample_data (name, value) 
       SELECT 
         'test_record_' || generate_series(1, 100),
-        (random() * 1000)::integer
-      ON CONFLICT DO NOTHING;
+        (random() * 1000)::integer;
   become_user: postgres
+  when: data_count.query_result[0].count == 0
+
+- name: Check pgexporter database permissions
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: |
+      SELECT has_database_privilege('pgexporter', 'postgres', 'CONNECT') as postgres_connect,
+             has_database_privilege('pgexporter', 'testdb', 'CONNECT') as testdb_connect;
+  become_user: postgres
+  register: db_perms
 
 - name: Grant basic permissions to pgexporter
   postgresql_query:
@@ -40,27 +68,66 @@
       GRANT CONNECT ON DATABASE postgres TO pgexporter;
       GRANT CONNECT ON DATABASE testdb TO pgexporter;
   become_user: postgres
+  when: not (db_perms.query_result[0].postgres_connect and db_perms.query_result[0].testdb_connect)
+
+- name: Check pgexporter schema permissions
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: |
+      SELECT has_schema_privilege('pgexporter', 'public', 'USAGE') as public_usage,
+             has_schema_privilege('pgexporter', 'information_schema', 'USAGE') as info_usage;
+  become_user: postgres
+  register: schema_perms
 
 - name: Grant schema usage permissions
-  postgresql_query:
+  community.postgresql.postgresql_query:
     login_db: postgres
     login_user: postgres
     query: |
       GRANT USAGE ON SCHEMA public TO pgexporter;
       GRANT USAGE ON SCHEMA information_schema TO pgexporter;
   become_user: postgres
+  when: not (schema_perms.query_result[0].public_usage and schema_perms.query_result[0].info_usage)
+
+- name: Check system table permissions
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: |
+      SELECT COUNT(*) FROM information_schema.table_privileges 
+      WHERE grantee = 'pgexporter' 
+      AND table_schema IN ('information_schema', 'pg_catalog') 
+      AND privilege_type = 'SELECT';
+  become_user: postgres
+  register: system_table_perms
 
 - name: Grant select permissions on system tables
-  postgresql_query:
+  community.postgresql.postgresql_query:
     login_db: postgres
     login_user: postgres
     query: |
       GRANT SELECT ON ALL TABLES IN SCHEMA information_schema TO pgexporter;
       GRANT SELECT ON ALL TABLES IN SCHEMA pg_catalog TO pgexporter;
   become_user: postgres
+  when: system_table_perms.query_result[0].count == 0
+
+- name: Check testdb permissions
+  community.postgresql.postgresql_query:
+    login_db: testdb
+    login_user: postgres
+    query: |
+      SELECT has_schema_privilege('pgexporter', 'public', 'USAGE') as schema_usage,
+             COUNT(*) as table_perms
+      FROM information_schema.table_privileges 
+      WHERE grantee = 'pgexporter' 
+      AND table_schema = 'public' 
+      AND privilege_type = 'SELECT';
+  become_user: postgres
+  register: testdb_perms
 
 - name: Grant pgexporter permissions on testdb
-  postgresql_query:
+  community.postgresql.postgresql_query:
     login_db: testdb
     login_user: postgres
     query: |
@@ -68,9 +135,95 @@
       GRANT SELECT ON ALL TABLES IN SCHEMA public TO pgexporter;
       GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO pgexporter;
   become_user: postgres
+  when: not testdb_perms.query_result[0].schema_usage or testdb_perms.query_result[0].table_perms == 0
+
+- name: Check if pg_monitor role exists
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: "SELECT 1 FROM pg_roles WHERE rolname = 'pg_monitor'"
+  become_user: postgres
+  register: pg_monitor_exists
+
+- name: Check if pgexporter has pg_monitor role
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: "SELECT pg_has_role('pgexporter', 'pg_monitor', 'member')"
+  become_user: postgres
+  register: pgexporter_has_monitor
+  when: pg_monitor_exists.rowcount > 0
+
+- name: Grant pg_monitor role to pgexporter
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: "GRANT pg_monitor TO pgexporter"
+  become_user: postgres
+  when: 
+    - pg_monitor_exists.rowcount > 0
+    - not pgexporter_has_monitor.query_result[0].pg_has_role
+
+- name: Check if custom WAL function exists (fallback for older PostgreSQL)
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: "SELECT 1 FROM pg_proc WHERE proname = 'pgexporter_pg_ls_waldir'"
+  become_user: postgres
+  register: wal_function_exists
+  when: pg_monitor_exists.rowcount == 0
+
+- name: Create custom WAL function (fallback for older PostgreSQL)
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: |
+      CREATE OR REPLACE FUNCTION pgexporter_pg_ls_waldir()
+      RETURNS TABLE(name text, size bigint, modification timestamp with time zone)
+      LANGUAGE SQL
+      SECURITY DEFINER
+      AS $
+        SELECT name, size, modification FROM pg_ls_waldir();
+      $
+  become_user: postgres
+  when: pg_monitor_exists.rowcount == 0
+
+- name: Check function permissions for pgexporter
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: |
+      SELECT has_function_privilege('pgexporter', 'pgexporter_pg_ls_waldir()', 'execute')
+  become_user: postgres
+  register: function_perms
+  when: pg_monitor_exists.rowcount == 0
+
+- name: Grant execute permission on custom WAL function
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    query: "GRANT EXECUTE ON FUNCTION pgexporter_pg_ls_waldir() TO pgexporter"
+  become_user: postgres
+  when: 
+    - pg_monitor_exists.rowcount == 0
+    - not function_perms.query_result[0].has_function_privilege
+
+- name: Test WAL directory access
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: pgexporter
+    login_password: "{{ vault_exporter_password }}"
+    login_host: localhost
+    query: "SELECT COUNT(*) FROM pg_ls_waldir() LIMIT 1"
+  register: wal_access_test
+  ignore_errors: true
+
+- name: Display WAL access test result
+  ansible.builtin.debug:
+    msg: "WAL directory access: {{ 'SUCCESS' if wal_access_test is not failed else 'FAILED - will use limited collectors' }}"
 
 - name: Test pgexporter connection to postgres database
-  postgresql_query:
+  community.postgresql.postgresql_query:
     login_db: postgres
     login_user: pgexporter
     login_password: "{{ vault_exporter_password }}"
@@ -79,11 +232,11 @@
   register: pg_exporter_postgres_test
 
 - name: Display pgexporter postgres connection test
-  debug:
+  ansible.builtin.debug:
     msg: "pgexporter connection to postgres DB: {{ 'SUCCESS' if pg_exporter_postgres_test is not failed else 'FAILED' }}"
 
 - name: Test pgexporter connection to testdb
-  postgresql_query:
+  community.postgresql.postgresql_query:
     login_db: testdb
     login_user: pgexporter
     login_password: "{{ vault_exporter_password }}"
@@ -92,15 +245,23 @@
   register: pg_exporter_testdb_test
 
 - name: Display pgexporter testdb connection test
-  debug:
+  ansible.builtin.debug:
     msg: "pgexporter connection to testdb: {{ 'SUCCESS' if pg_exporter_testdb_test is not failed else 'FAILED' }}"
 
-- name: Restart postgres_exporter service
-  systemd:
+- name: Check if postgres_exporter service needs restart
+  ansible.builtin.systemd:
+    name: postgres_exporter
+  register: postgres_exporter_status
+
+- name: Restart postgres_exporter service if needed
+  ansible.builtin.systemd:
     name: postgres_exporter
     state: restarted
-  when: pg_exporter_postgres_test is not failed
+  when: 
+    - pg_exporter_postgres_test is not failed
+    - postgres_exporter_status.status.ActiveState != "active"
 
 - name: Wait for postgres_exporter to initialize
-  pause:
-    seconds: 15
+  ansible.builtin.pause:
+    seconds: 5
+  when: postgres_exporter_status.status.ActiveState != "active"

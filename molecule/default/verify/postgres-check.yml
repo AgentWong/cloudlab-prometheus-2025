@@ -16,7 +16,7 @@
 
 - name: Test PostgreSQL connection
   community.general.postgresql_ping:
-    db: postgres
+    login_db: postgres
     login_user: postgres
   become_user: postgres
   register: postgres_connection
@@ -30,7 +30,7 @@
 
 - name: Check if test database exists and has data
   community.general.postgresql_query:
-    db: testdb
+    login_db: testdb
     login_user: postgres
     query: "SELECT count(*) as record_count FROM sample_data"
   become_user: postgres
@@ -45,7 +45,7 @@
 
 - name: Check if pgexporter user exists
   community.general.postgresql_query:
-    db: postgres
+    login_db: postgres
     login_user: postgres
     query: "SELECT 1 FROM pg_user WHERE usename='pgexporter'"
   become_user: postgres
@@ -60,7 +60,7 @@
 
 - name: Test pgexporter basic connection to postgres database
   community.general.postgresql_query:
-    db: postgres
+    login_db: postgres
     login_user: pgexporter
     login_password: "{{ vault_exporter_password }}"
     login_host: localhost

@@ -141,12 +141,33 @@
 
     postgres_exporter_web_listen_address: "0.0.0.0:9187"
     postgres_exporter_system_user: pgexporter
+    # Disable WAL collector to avoid permission errors
+    postgres_exporter_disable_default_metrics: false
+    postgres_exporter_disable_settings_metrics: false
+    postgres_exporter_auto_discover_databases: true
+    postgres_exporter_exclude_databases: []
+    # Disable collectors that require superuser privileges
+    postgres_exporter_collectors:
+      - bgwriter
+      - database
+      - locks
+      - postmaster
+      - process_idle
+      - replication
+      - stat_activity_autovacuum
+      - stat_database
+      - stat_statements
+      - stat_user_tables
+      - statio_user_tables
+      - xlog_location
+    # Note: Removed 'wal' from the collectors list
 
   pre_tasks:
     - name: Set postgresql_version
       ansible.builtin.set_fact:
         postgresql_version: '13'
       when: ansible_distribution == 'Debian'
+        
   roles:
     - geerlingguy.postgresql
     - prometheus.prometheus.postgres_exporter
