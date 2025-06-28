@@ -4,7 +4,7 @@
 # =============================================================================
 
 - name: Test connectivity to postgres_exporter from monitoring server
-  uri:
+  ansible.builtin.uri:
     url: "http://postgres-server:9187/metrics"
     method: GET
     timeout: 10
@@ -13,7 +13,7 @@
   ignore_errors: true
 
 - name: Display remote postgres_exporter connectivity
-  debug:
+  ansible.builtin.debug:
     msg: |
       Remote postgres_exporter test: {{ 'SUCCESS' if remote_pg_metrics_test.status == 200 else 'FAILED' }}
       Status: {{ remote_pg_metrics_test.status | default('Connection failed') }}
@@ -22,7 +22,7 @@
       {% endif %}
 
 - name: Query PostgreSQL metrics from Prometheus
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9090/api/v1/query?query=pg_up"
     method: GET
     timeout: 30
@@ -32,7 +32,7 @@
   delay: 15
 
 - name: Display Prometheus PostgreSQL query results
-  debug:
+  ansible.builtin.debug:
     msg: |
       Prometheus pg_up query:
       Status: {{ pg_up_query.json.status if pg_up_query.json is defined else 'Failed' }}
@@ -42,7 +42,7 @@
       {% endif %}
 
 - name: Verify PostgreSQL metrics are being collected (conditional)
-  assert:
+  ansible.builtin.assert:
     that:
       - pg_up_query.status == 200
       - pg_up_query.json.status == "success"
@@ -53,14 +53,14 @@
   when: remote_pg_metrics_test.status == 200
 
 - name: Query node metrics from both servers
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9090/api/v1/query?query=up{job=\"node\"}"
     method: GET
     timeout: 30
   register: node_up_query
 
 - name: Verify node metrics from both servers
-  assert:
+  ansible.builtin.assert:
     that:
       - node_up_query.status == 200
       - node_up_query.json.status == "success"
@@ -69,14 +69,14 @@
     success_msg: "Node metrics are being collected from both servers"
 
 - name: Test specific PostgreSQL database metrics
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9090/api/v1/query?query=pg_stat_database_numbackends%7Bdatname%3D%22testdb%22%7D"
     method: GET
     timeout: 30
   register: testdb_metrics
 
 - name: Verify test database specific metrics
-  assert:
+  ansible.builtin.assert:
     that:
       - testdb_metrics.status == 200
       - testdb_metrics.json.status == "success"
@@ -84,14 +84,14 @@
     success_msg: "Test database metrics are available"
 
 - name: Check alert rules are loaded
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9090/api/v1/rules"
     method: GET
     return_content: true
   register: rules_response
 
 - name: Verify alert rules are configured
-  assert:
+  ansible.builtin.assert:
     that:
       - rules_response.status == 200
       - rules_response.json.status == "success"

@@ -5,7 +5,7 @@
 
 - name: Wait for PostgreSQL to be fully ready
   postgresql_ping:
-    db: postgres
+    login_db: postgres
     login_user: postgres
   become_user: postgres
   retries: 10
@@ -13,7 +13,7 @@
 
 - name: Create sample table in test database
   postgresql_query:
-    db: testdb
+    login_db: testdb
     login_user: postgres
     query: |
       CREATE TABLE IF NOT EXISTS sample_data (
@@ -26,7 +26,7 @@
 
 - name: Insert sample data
   postgresql_query:
-    db: testdb
+    login_db: testdb
     login_user: postgres
     query: |
       INSERT INTO sample_data (name, value) 
@@ -38,7 +38,7 @@
 
 - name: Grant basic permissions to pgexporter
   postgresql_query:
-    db: postgres
+    login_db: postgres
     login_user: postgres
     query: |
       GRANT CONNECT ON DATABASE postgres TO pgexporter;
@@ -47,7 +47,7 @@
 
 - name: Grant schema usage permissions
   postgresql_query:
-    db: postgres
+    login_db: postgres
     login_user: postgres
     query: |
       GRANT USAGE ON SCHEMA public TO pgexporter;
@@ -56,7 +56,7 @@
 
 - name: Grant select permissions on system tables
   postgresql_query:
-    db: postgres
+    login_db: postgres
     login_user: postgres
     query: |
       GRANT SELECT ON ALL TABLES IN SCHEMA information_schema TO pgexporter;
@@ -65,7 +65,7 @@
 
 - name: Grant pgexporter permissions on testdb
   postgresql_query:
-    db: testdb
+    login_db: testdb
     login_user: postgres
     query: |
       GRANT USAGE ON SCHEMA public TO pgexporter;
@@ -75,7 +75,7 @@
 
 - name: Test pgexporter connection to postgres database
   postgresql_query:
-    db: postgres
+    login_db: postgres
     login_user: pgexporter
     login_password: "{{ vault_exporter_password }}"
     login_host: localhost
@@ -88,7 +88,7 @@
 
 - name: Test pgexporter connection to testdb
   postgresql_query:
-    db: testdb
+    login_db: testdb
     login_user: pgexporter
     login_password: "{{ vault_exporter_password }}"
     login_host: localhost

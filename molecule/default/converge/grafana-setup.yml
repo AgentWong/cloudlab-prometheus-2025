@@ -3,38 +3,54 @@
 # converge/grafana-setup.yml - Grafana installation and basic configuration
 # =============================================================================
 
-- name: Install GPG and related packages
-  package:
+- name: Install GPG and related packages (Debian)
+  ansible.builtin.package:
     name:
       - gnupg
       - software-properties-common
     state: present
   when: ansible_os_family == "Debian"
 
-- name: Add Grafana GPG key
-  apt_key:
+- name: Add Grafana GPG key (Debian)
+  ansible.builtin.apt_key:
     url: https://apt.grafana.com/gpg.key
     state: present
   when: ansible_os_family == "Debian"
 
-- name: Add Grafana repository
-  apt_repository:
+- name: Add Grafana repository (Debian)
+  ansible.builtin.apt_repository:
     repo: "deb https://apt.grafana.com stable main"
     state: present
   when: ansible_os_family == "Debian"
 
-- name: Update apt cache
-  apt:
+- name: Update apt cache (Debian)
+  ansible.builtin.apt:
     update_cache: true
   when: ansible_os_family == "Debian"
 
+- name: Add Grafana GPG key (RedHat)
+  ansible.builtin.rpm_key:
+    key: https://rpm.grafana.com/gpg.key
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Add Grafana repository (RedHat)
+  ansible.builtin.yum_repository:
+    name: grafana
+    description: "Grafana"
+    baseurl: https://rpm.grafana.com
+    gpgcheck: true
+    gpgkey: https://rpm.grafana.com/gpg.key
+    state: present
+  when: ansible_os_family == "RedHat"
+
 - name: Install Grafana
-  package:
+  ansible.builtin.package:
     name: grafana
     state: present
 
 - name: Configure Grafana admin password
-  ini_file:
+  community.general.ini_file:
     path: /etc/grafana/grafana.ini
     section: security
     option: admin_password
@@ -43,7 +59,7 @@
   notify: restart grafana
 
 - name: Configure Grafana to listen on all interfaces
-  ini_file:
+  community.general.ini_file:
     path: /etc/grafana/grafana.ini
     section: server
     option: http_addr
@@ -52,13 +68,13 @@
   notify: restart grafana
 
 - name: Start and enable Grafana service
-  systemd:
+  ansible.builtin.systemd:
     name: grafana-server
     state: started
     enabled: true
 
 - name: Wait for Grafana to be ready
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:3000/api/health"
     method: GET
     timeout: 30

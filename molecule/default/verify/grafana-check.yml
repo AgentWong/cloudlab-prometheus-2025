@@ -4,12 +4,12 @@
 # =============================================================================
 
 - name: Check if Grafana service is running
-  systemd:
+  ansible.builtin.systemd:
     name: grafana-server
   register: grafana_service
 
 - name: Verify Grafana service is active
-  assert:
+  ansible.builtin.assert:
     that:
       - grafana_service.status.ActiveState == "active"
       - grafana_service.status.SubState == "running"
@@ -17,7 +17,7 @@
     success_msg: "Grafana service is active and running"
 
 - name: Test Grafana health endpoint
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:3000/api/health"
     method: GET
     timeout: 30
@@ -26,7 +26,7 @@
   delay: 10
 
 - name: Verify Grafana is responding
-  assert:
+  ansible.builtin.assert:
     that:
       - grafana_health.status == 200
       - grafana_health.json.database == "ok"

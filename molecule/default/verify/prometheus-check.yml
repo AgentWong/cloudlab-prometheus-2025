@@ -4,12 +4,12 @@
 # =============================================================================
 
 - name: Check if Prometheus service is running
-  systemd:
+  ansible.builtin.systemd:
     name: prometheus
   register: prometheus_service
 
 - name: Verify Prometheus service is active
-  assert:
+  ansible.builtin.assert:
     that:
       - prometheus_service.status.ActiveState == "active"
       - prometheus_service.status.SubState == "running"
@@ -17,7 +17,7 @@
     success_msg: "Prometheus service is active and running"
 
 - name: Wait for Prometheus HTTP endpoint to be ready
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9090/-/ready"
     method: GET
     timeout: 10
@@ -27,14 +27,14 @@
   delay: 10
 
 - name: Test Prometheus API - targets endpoint
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9090/api/v1/targets"
     method: GET
     timeout: 30
   register: targets_response
 
 - name: Display detailed Prometheus targets information
-  debug:
+  ansible.builtin.debug:
     msg: |
       Prometheus Targets Debug:
       Active targets: {{ targets_response.json.data.activeTargets | length if targets_response.json.data.activeTargets is defined else 0 }}
@@ -48,7 +48,7 @@
       {% endfor %}
 
 - name: Verify Prometheus targets are being scraped
-  assert:
+  ansible.builtin.assert:
     that:
       - targets_response.status == 200
       - targets_response.json.status == "success"

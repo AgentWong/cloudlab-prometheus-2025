@@ -4,7 +4,7 @@
 # =============================================================================
 
 - name: Create database activity script
-  copy:
+  ansible.builtin.copy:
     dest: /usr/local/bin/db_activity.sh
     mode: '0755'
     content: |
@@ -21,7 +21,7 @@
       done
 
 - name: Create systemd service for database activity
-  copy:
+  ansible.builtin.copy:
     dest: /etc/systemd/system/db-activity.service
     content: |
       [Unit]
@@ -39,7 +39,7 @@
       WantedBy=multi-user.target
 
 - name: Start and enable database activity service
-  systemd:
+  ansible.builtin.systemd:
     name: db-activity
     state: started
     enabled: true

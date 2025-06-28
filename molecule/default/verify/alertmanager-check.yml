@@ -4,12 +4,12 @@
 # =============================================================================
 
 - name: Check if AlertManager service is running
-  systemd:
+  ansible.builtin.systemd:
     name: alertmanager
   register: alertmanager_service
 
 - name: Verify AlertManager service is active
-  assert:
+  ansible.builtin.assert:
     that:
       - alertmanager_service.status.ActiveState == "active"
       - alertmanager_service.status.SubState == "running"
@@ -17,7 +17,7 @@
     success_msg: "AlertManager service is active and running"
 
 - name: Test AlertManager API
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9093/api/v2/status"
     method: GET
     timeout: 30
@@ -26,7 +26,7 @@
   delay: 5
 
 - name: Verify AlertManager is responding
-  assert:
+  ansible.builtin.assert:
     that:
       - alertmanager_status.status == 200
     fail_msg: "AlertManager API not responding"

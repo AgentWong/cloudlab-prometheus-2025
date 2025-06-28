@@ -4,12 +4,12 @@
 # =============================================================================
 
 - name: Check node exporter service
-  systemd:
+  ansible.builtin.systemd:
     name: node_exporter
   register: node_exporter_service
 
 - name: Verify node exporter is running
-  assert:
+  ansible.builtin.assert:
     that:
       - node_exporter_service.status.ActiveState == "active"
       - node_exporter_service.status.SubState == "running"
@@ -17,14 +17,14 @@
     success_msg: "Node exporter service is running on {{ inventory_hostname }}"
 
 - name: Test node exporter metrics
-  uri:
+  ansible.builtin.uri:
     url: "http://localhost:9100/metrics"
     method: GET
     return_content: true
   register: node_metrics
 
 - name: Verify node exporter metrics
-  assert:
+  ansible.builtin.assert:
     that:
       - node_metrics.status == 200
       - "'node_cpu_seconds_total' in node_metrics.content"

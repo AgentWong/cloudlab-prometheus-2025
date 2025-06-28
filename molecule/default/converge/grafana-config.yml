@@ -17,7 +17,7 @@
   register: prometheus_datasource_result
 
 - name: Display datasource creation result
-  debug:
+  ansible.builtin.debug:
     msg: "Prometheus datasource: {{ prometheus_datasource_result.msg }}"
 
 - name: Import PostgreSQL Database dashboard
@@ -32,7 +32,7 @@
   register: postgres_dashboard_result
 
 - name: Display dashboard import result
-  debug:
+  ansible.builtin.debug:
     msg: "PostgreSQL dashboard: {{ postgres_dashboard_result.msg }}"
 
 - name: Import Node Exporter Full dashboard
@@ -47,5 +47,5 @@
   register: node_dashboard_result
 
 - name: Display Node Exporter dashboard import result
-  debug:
+  ansible.builtin.debug:
     msg: "Node Exporter dashboard: {{ node_dashboard_result.msg }}"

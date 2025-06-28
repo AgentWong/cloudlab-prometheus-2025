@@ -1,0 +1,59 @@
+name: Prometheus Molecule Tests
+
+on:
+  workflow_dispatch:
+
+env:
+  PY_COLORS: '1'
+  ANSIBLE_FORCE_COLOR: '1'
+
+jobs:
+  molecule-test:
+    name: Molecule Test (${{ matrix.distro.name }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - name: "Ubuntu 22.04"
+            image: "geerlingguy/docker-ubuntu2204-ansible"
+            tag: "latest"
+          - name: "Debian 11"
+            image: "geerlingguy/docker-debian11-ansible"
+            tag: "latest"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/requirements.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          pip3 install --no-cache-dir ansible-core
+#pip3 install --no-cache-dir -r .github/workflows/files/requirements.txt
+
+      #- name: Install Collections
+      #  run: |
+      #    ansible-galaxy collection install -r .github/workflows/files/requirements.yml
+
+      - name: Run Molecule tests
+        env:
+          DOCKER_IMAGE: ${{ matrix.distro.image }}
+          DOCKER_TAG: ${{ matrix.distro.tag }}
+          DOCKERFILE: ${{ matrix.distro.dockerfile }}
+        run: |
+          molecule test
+        timeout-minutes: 120
